@@ -14,14 +14,15 @@ PROGRAM porefem
  INTEGER,PARAMETER::iwp=SELECTED_REAL_KIND(15),npri=1
  INTEGER::cg_iters,cg_limit,fixed_freedoms,i,iel,k,loaded_nodes,ndim=3,   &
    ndof,nels,neq,nip,nn,nprops=2,np_types,nod,nodof=3,nr,nst=6,nxe,nye,   &
-   nze,nlen,ii,iii,s
- INTEGER::ip,iq,maxfld,j
+   nze,nlen,nlen_out,ii,iii,s
+ INTEGER::ip,iq,maxfld,j,ipore
  REAL(iwp)::alpha,beta,cg_tol,det,one=1.0_iwp,penalty=1.0e20_iwp,up,      &
    zero=0.0_iwp,xl,yl,zl,dx1,dy1,dz1,small=1.0e-6_iwp,dtim=1.0_iwp
  REAL(iwp)::ee,ei,vi,meanqe,sdqe,meanqv,meanqv1,sdqv,sdqv1,pernom,porosity,ll,ul, &
             three=3.0_iwp,two=2.0_iwp,meanpo,sdpo,start_time,end_time,    &
             pcg_start_time,pcg_end_time
- CHARACTER(LEN=15)::element='hexahedron',argv,trash
+ CHARACTER(LEN=15)   :: element='hexahedron',argv,trash
+ CHARACTER(LEN=15)   :: filename_out, format_string
  LOGICAL::cg_converged,solid=.true.
 !-----------------------dynamic arrays------------------------------------
  INTEGER,ALLOCATABLE::etype(:),g(:),g_g(:,:),g_num(:,:),nf(:,:),no(:),    &
@@ -277,7 +278,7 @@ elements_1: DO iel=1,nels
  ! phifld, psifld, gamfld, efld & vfld are not used in the main program
  ! perhaps these should be allocated and deallocated in subroutine simpl3
                        
-       k = 0
+      k = 0
       do iii=1, nze
         do s = 1, nxe
           do i = 1, nye
@@ -306,6 +307,8 @@ elements_1: DO iel=1,nels
      diag_precon(g(k))=diag_precon(g(k))+km(k,k)
    END DO
  END DO elements_2
+ 
+ CALL sortvoid(etype)
  
  DEALLOCATE(cfld) ! not used again in the program until the next iteration
  
@@ -361,7 +364,25 @@ elements_1: DO iel=1,nels
 
    DEALLOCATE(p,x,xnew,u,temp1,temp2,diag_precon,d)          
 
-   IF(ns==1) THEN
+!  IF(ns==1) THEN
+
+     IF(ns < 10) THEN
+       format_string = "(2A,I1)"
+     ELSE IF(ns < 100) THEN
+       format_string = "(2A,I2)"
+     ELSE IF(ns < 1000) THEN
+       format_string = "(2A,I3)"
+     ELSE IF(ns < 10000) THEN
+       format_string = "(2A,I4)"
+     ELSE
+       WRITE(*,*) "Limit of 9999 realisations in format_string"
+       STOP
+     END IF
+     
+     WRITE(filename_out,format_string) trim(argv),"_r",ns
+     nlen_out = len(trim(filename_out))
+     
+     
      ALLOCATE(g_coord(ndim,nn),g_num(nod,nels))
      DO iel=1,nels
        CALL hexahedron_xz(iel,x_coords,y_coords,z_coords,coord,num)
@@ -369,10 +390,12 @@ elements_1: DO iel=1,nels
        g_num(:,iel)=num
        g_coord(:,num)=TRANSPOSE(coord)
      END DO
-     CALL mesh_ensi(argv,nlen,g_coord,g_num,element,etype,nf,loads(1:),        &
-                    1,npri,dtim,solid)
+!    CALL mesh_ensi(argv,nlen,g_coord,g_num,element,etype,                    &
+!                   loads(1:),1,npri,dtim,solid)
+     CALL mesh_ensi(filename_out,nlen_out,g_coord,g_num,element,etype,nf,     &
+                    loads(1:),1,npri,dtim,solid)
      DEALLOCATE(g_coord,g_num)
-   END IF
+!  END IF
 
 
   ENDDO
@@ -401,5 +424,56 @@ CALL cpu_time(end_time)
 WRITE(11,'(/,A,f12.4)')"time taken=",end_time-start_time
 WRITE(*,*)"Time taken = ", end_time-start_time
 STOP
+
+CONTAINS
+
+SUBROUTINE sortvoid(etype)
+
+INTEGER,INTENT(INOUT) :: etype(:)
+INTEGER               :: iel, nels, npores, count
+REAL(iwp)             :: start_sort, end_sort
+LOGICAL               :: debug = .false.
+LOGICAL               :: found = .false.
+
+CALL cpu_time(start_sort)
+
+nels = UBOUND(etype,1)
+
+IF(debug) THEN
+  DO iel = 1,nels
+    WRITE(*,*) "Element ", iel, " = type ", etype(iel)
+  END DO
+END IF
+
+ipore = 0
+DO iel = 1,nels
+  IF(etype(iel)==1) npores = npores + 1
+END DO
+
+DO j = 1, npores
+  count = 0
+  IF(found) THEN
+    found = .false.
+  END IF
+  DO iel = 1, nels
+    count = count + 1
+    IF(etype(iel)==1) THEN 
+      found = .true.
+      IF(debug) WRITE(*,*) "Position = ",count
+      CYCLE
+    END IF
+  END DO
+END DO
+
+IF(debug) THEN
+  WRITE(*,*) "Number of pore elements  = ",npores
+  WRITE(*,*) "Number of solid elements = ",nels-npores
+END IF
+
+CALL cpu_time(end_sort)
+WRITE(*,*)"Time to sort voids = ", end_sort - start_sort
+
+END SUBROUTINE sortvoid
+
 
 END PROGRAM porefem
