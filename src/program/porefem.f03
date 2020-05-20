@@ -24,6 +24,7 @@ PROGRAM porefem
  CHARACTER(LEN=15)   :: element='hexahedron',argv,trash
  CHARACTER(LEN=15)   :: filename_out, format_string
  LOGICAL::cg_converged,solid=.true.
+ LOGICAL::debug2 = .false.
 !-----------------------dynamic arrays------------------------------------
  INTEGER,ALLOCATABLE::etype(:),g(:),g_g(:,:),g_num(:,:),nf(:,:),no(:),    &
    node(:),num(:),sense(:),imap(:)
@@ -308,7 +309,7 @@ elements_1: DO iel=1,nels
    END DO
  END DO elements_2
  
- CALL sortvoid(etype)
+ IF(debug2) CALL sortvoid(etype)
  
  DEALLOCATE(cfld) ! not used again in the program until the next iteration
  
